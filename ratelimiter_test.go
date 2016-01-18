@@ -8,18 +8,20 @@ import (
 	"time"
 )
 
+var rl *RateLimiter
+
 func TestSetDefaultStore(t *testing.T) {
-	// External packages that import the rate limiter are expected to implement a
-	// Store and use the SetStore method to let the rate limiter which store to
-	// use.
-	SetStore(exampleStoreFn)
-	assert.NotNil(t, DefaultStore)
+	var err error
+	rl, err = NewRateLimiter(exampleStoreFn)
+
+	assert.NotNil(t, rl)
+	assert.NoError(t, err)
 }
 
-func TestRemoveKey(t *testing.T) {
+func TestRemoveLockKey(t *testing.T) {
 	// We want to start clean, so we delete the key we're going to use in the
 	// next test.
-	err := Remove("login-attempt-from-127.0.0.1")
+	err := rl.RemoveLock("login-attempt-from-127.0.0.1")
 	assert.Nil(t, err)
 }
 
@@ -29,16 +31,16 @@ func TestCheckFiveAttemptsWithinTenSeconds(t *testing.T) {
 	// Setting up a lock that counts how many login attempts are recevied from
 	// 127.0.0.1, we want this rate limiter to lock itself if more than 5 hits
 	// happen within 10 seconds.
-	rl, err := RateLimiter("login-attempt-from-127.0.0.1", allowedTries, time.Second*10)
+	lock, err := rl.NewLock("login-attempt-from-127.0.0.1", allowedTries, time.Second*10)
 	assert.Nil(t, err)
 
 	for i := uint64(0); i < allowedTries*1000; i++ {
-		if rl.IsAllowed() {
+		if lock.IsAllowed() {
 			assert.False(t, i >= allowedTries, fmt.Errorf("Expecting %d to be lower than %d.", i, allowedTries))
 		} else {
 			assert.False(t, i < allowedTries, fmt.Errorf("Expecting %d to be greater than or equal to %d.", i, allowedTries))
 		}
-		err := rl.Hit()
+		err := lock.Hit()
 		assert.NoError(t, err)
 	}
 }
@@ -46,19 +48,19 @@ func TestCheckFiveAttemptsWithinTenSeconds(t *testing.T) {
 func TestOneMoreTimeWithTheSameKey(t *testing.T) {
 	allowedTries := uint64(5)
 
-	rl, err := RateLimiter("login-attempt-from-127.0.0.1", allowedTries, time.Second*10)
+	lock, err := rl.NewLock("login-attempt-from-127.0.0.1", allowedTries, time.Second*10)
 	assert.NoError(t, err)
 
-	assert.False(t, rl.IsAllowed())
+	assert.False(t, lock.IsAllowed())
 }
 
 func TestALotMoreTimesWithTheSameKey(t *testing.T) {
 	allowedTries := uint64(5)
 
 	for i := 0; i < 1000; i++ {
-		rl, err := RateLimiter("login-attempt-from-127.0.0.1", allowedTries, time.Second*10)
+		lock, err := rl.NewLock("login-attempt-from-127.0.0.1", allowedTries, time.Second*10)
 		assert.NoError(t, err)
-		assert.False(t, rl.IsAllowed(), "This key should still be not allowed.")
+		assert.False(t, lock.IsAllowed(), "This key should still be not allowed.")
 	}
 }
 
@@ -67,20 +69,20 @@ func TestWithGoroutines(t *testing.T) {
 
 	key := "test-reset-password-attempt-from-127.0.0.1"
 
-	err := Remove(key)
+	err := rl.RemoveLock(key)
 	assert.NoError(t, err)
 
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup) {
-			rl, err := RateLimiter(key, 10, time.Minute*1)
+			lock, err := rl.NewLock(key, 10, time.Minute*1)
 			if err != nil {
 				panic(err.Error())
 			}
-			if !rl.IsAllowed() {
+			if !lock.IsAllowed() {
 				panic("Expecting it to be allowed.")
 			}
-			rl.Hit()
+			lock.Hit()
 			wg.Done()
 		}(&wg)
 	}
@@ -88,22 +90,22 @@ func TestWithGoroutines(t *testing.T) {
 	wg.Wait()
 
 	// Another one should trigger the alarm.
-	rl, err := RateLimiter(key, 10, time.Minute*1)
-	rl.Hit()
+	lock, err := rl.NewLock(key, 10, time.Minute*1)
+	lock.Hit()
 	assert.NoError(t, err)
-	assert.False(t, rl.IsAllowed(), "Should not be allowed.")
+	assert.False(t, lock.IsAllowed(), "Should not be allowed.")
 }
 
 func TestWithClear(t *testing.T) {
 	key := "test-reset-password-attempt-from-127.0.0.1"
 
 	for i := 0; i < 100; i++ {
-		Remove(key)
-		rl, err := RateLimiter(key, 10, time.Minute*1)
+		rl.RemoveLock(key)
+		lock, err := rl.NewLock(key, 10, time.Minute*1)
 		assert.NoError(t, err)
-		assert.True(t, rl.IsAllowed())
+		assert.True(t, lock.IsAllowed())
 
-		err = rl.Hit()
+		err = lock.Hit()
 		assert.NoError(t, err)
 	}
 }
@@ -112,27 +114,27 @@ func TestFillItAndWaitAFewSeconds(t *testing.T) {
 	key := "test-login-attempt-from-127.0.0.1"
 	blockDuration := time.Second * 10
 
-	Remove(key)
+	rl.RemoveLock(key)
 	for i := 0; i < 100; i++ {
-		rl, err := RateLimiter(key, 10, blockDuration)
+		lock, err := rl.NewLock(key, 10, blockDuration)
 		assert.NoError(t, err)
 		if i >= 10 {
-			assert.False(t, rl.IsAllowed(), "The limit have been hit!")
+			assert.False(t, lock.IsAllowed(), "The limit have been hit!")
 		} else {
-			assert.True(t, rl.IsAllowed())
+			assert.True(t, lock.IsAllowed())
 		}
-		err = rl.Hit()
+		err = lock.Hit()
 		assert.NoError(t, err)
 	}
 
 	startTime := time.Now()
 
-	rl, err := RateLimiter(key, 10, blockDuration)
+	lock, err := rl.NewLock(key, 10, blockDuration)
 	assert.NoError(t, err)
 
 	// OK, let's keep bugging it until it let's us pass.
 	for {
-		if rl.IsAllowed() {
+		if lock.IsAllowed() {
 			break
 		}
 		time.Sleep(time.Millisecond * 500)

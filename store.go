@@ -20,7 +20,7 @@ type Store interface {
 	Increment(key string) (uint64, error)
 }
 
-// StoreFn represents a store function.
+// StoreFn returns a Store.
 type StoreFn func() (Store, error)
 
 // DefaultStore is a function that returns a store defined outside this
