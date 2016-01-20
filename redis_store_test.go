@@ -20,9 +20,10 @@ func newRedisStore(addr string) (*redisStore, error) {
 }
 
 func (rs *redisStore) do(commandName string, args ...interface{}) (reply interface{}, err error) {
-	// This prevent redis from getting crazy with concurrency.
+	// This prevent redis from getting crazy with concurrency, see go test -v -race.
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
+
 	return rs.c.Do(commandName, args...)
 }
 

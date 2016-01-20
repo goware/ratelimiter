@@ -98,6 +98,37 @@ func TestWithGoroutines(t *testing.T) {
 	assert.False(t, lock.IsAllowed(), "Should not be allowed.")
 }
 
+func TestVerifyAndHit(t *testing.T) {
+	var wg sync.WaitGroup
+
+	key := "test-reset-password-attempt-from-127.0.0.1"
+
+	err := rl.RemoveLock(key)
+	assert.NoError(t, err)
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(wg *sync.WaitGroup) {
+			lock, err := rl.NewLock(key, 10, time.Minute*1)
+			if err != nil {
+				panic(err.Error())
+			}
+			if !lock.VerifyAndHit() {
+				panic("Expecting it to be allowed.")
+			}
+			wg.Done()
+		}(&wg)
+	}
+
+	wg.Wait()
+
+	// Another one should trigger the alarm.
+	lock, err := rl.NewLock(key, 10, time.Minute*1)
+	lock.Hit()
+	assert.NoError(t, err)
+	assert.False(t, lock.VerifyAndHit(), "Should not be allowed.")
+}
+
 func TestWithClear(t *testing.T) {
 	key := "test-reset-password-attempt-from-127.0.0.1"
 

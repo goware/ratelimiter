@@ -38,6 +38,23 @@ func (lim *Lock) Hit() error {
 	return err
 }
 
+// VerifyAndHit is like checking IsAllowed() and marking a Hit().
+func (lim *Lock) VerifyAndHit() bool {
+	if lim.allowed > 0 {
+		hits, err := lim.s.Increment(lim.key)
+		if err == nil {
+			if hits > lim.allowed {
+				return false
+			}
+		}
+		// Either we haven't hit the limit yet or there was an error with the
+		// store.
+		return true
+	}
+	// No limit has been set.
+	return true
+}
+
 // GetTTL returns the number of seconds this key is still valid or zero if the
 // key does not exists.
 func (lim *Lock) GetTTL() (time.Duration, error) {
