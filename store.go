@@ -19,10 +19,3 @@ type Store interface {
 	// Increment atomically increments the given key by one.
 	Increment(key string) (uint64, error)
 }
-
-// StoreFn returns a Store.
-type StoreFn func() (Store, error)
-
-// DefaultStore is a function that returns a store defined outside this
-// package.
-var DefaultStore StoreFn
