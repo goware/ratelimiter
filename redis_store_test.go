@@ -4,12 +4,19 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"strconv"
 	"sync"
-	"sync/atomic"
 )
 
 type redisStore struct {
 	c  redis.Conn
 	mu sync.Mutex
+}
+
+func newRedisStore(addr string) (*redisStore, error) {
+	c, err := redis.Dial("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	return &redisStore{c: c}, nil
 }
 
 func (rs *redisStore) do(commandName string, args ...interface{}) (reply interface{}, err error) {
@@ -57,19 +64,4 @@ func (rs *redisStore) Increment(key string) (uint64, error) {
 		return 0, err
 	}
 	return uint64(i.(int64)), err
-}
-
-var cachedStore atomic.Value
-
-func exampleStoreFn() (Store, error) {
-	// Reusing the same client instead of creating a new one each time
-	// exampleStoreFn is called.
-	if cachedStore.Load() == nil {
-		c, err := redis.Dial("tcp", "127.0.0.1:6379")
-		if err != nil {
-			return nil, err
-		}
-		cachedStore.Store(&redisStore{c: c})
-	}
-	return cachedStore.Load().(*redisStore), nil
 }

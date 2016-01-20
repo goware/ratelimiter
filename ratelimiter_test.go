@@ -10,10 +10,12 @@ import (
 
 var rl *RateLimiter
 
-func TestSetDefaultStore(t *testing.T) {
-	var err error
-	rl, err = NewRateLimiter(exampleStoreFn)
+func TestCreateStore(t *testing.T) {
+	//store, err := newRedisStore("127.0.0.1:6379")
+	store, err := newMockStore()
+	assert.NoError(t, err)
 
+	rl, err = NewRateLimiter(store)
 	assert.NotNil(t, rl)
 	assert.NoError(t, err)
 }
