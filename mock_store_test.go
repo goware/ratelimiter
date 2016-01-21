@@ -69,13 +69,13 @@ func (ms *mockStore) getKey(key string) (*mockStoreValue, error) {
 
 	v, ok := ms.values[key]
 	if !ok {
-		return nil, errors.New("No such key.")
+		return nil, errors.New("No such key")
 	}
 
 	ttl := v.expiresAt - time.Now().Unix()
 	if ttl < 0 {
 		delete(ms.values, key)
-		return nil, errors.New("No such key.")
+		return nil, errors.New("No such key")
 	}
 
 	return v, nil
